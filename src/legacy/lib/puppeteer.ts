@@ -19,8 +19,10 @@ const scrapeJsonFromResponse = async (options, cb) => {
 
     page.on("request", (interceptedRequest) => {
       const reqUrl = interceptedRequest.url();
-      console.log("A request was started: ", reqUrl);
+      console.log("A request was started:", reqUrl);
     });
+
+    let handled = false;
 
     page.on("requestfinished", async (request) => {
       try {
@@ -28,43 +30,54 @@ const scrapeJsonFromResponse = async (options, cb) => {
         if (resUrl.indexOf(options.responseSelector) === -1) return;
 
         const response = request.response();
-        console.log("A response was received: ", await response.url());
+        console.log("A response was received:", await response.url());
 
-        // Try JSON first (normal case)
+        // Try JSON first
         try {
           const json = await response.json();
-          return cb(json);
-        } catch (jsonErr) {
-          // Not JSON — try to recover from text/HTML
+          handled = true;
+          return cb({ ok: true, source: "json", data: json });
+        } catch {
+          // Try HTML / text next
           try {
             const text = await response.text();
 
-            // Attempt to find a JSON object/array inside the HTML (simple heuristic)
+            // Try to find embedded JSON
             const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
             if (jsonMatch && jsonMatch[0]) {
               try {
                 const parsed = JSON.parse(jsonMatch[0]);
-                return cb(parsed);
+                handled = true;
+                return cb({ ok: true, source: "embedded_json", data: parsed });
               } catch (parseErr) {
-                console.error("Failed to parse extracted JSON:", parseErr.message);
+                console.error("Failed to parse embedded JSON:", parseErr.message);
               }
             }
 
-            // If no JSON found, return the raw text so caller can inspect (or null)
-            console.warn("Upstream returned non-JSON response; returning raw text.");
-            return cb({ raw: text });
+            // Return snippet for inspection
+            const snippet = text ? text.slice(0, 2000) : "";
+            handled = true;
+            return cb({
+              ok: false,
+              reason: "upstream_non_json",
+              upstreamUrl: await response.url(),
+              snippetLength: snippet.length,
+              snippet,
+            });
           } catch (textErr) {
-            console.error("Failed to read response text:", textErr && textErr.message ? textErr.message : textErr);
-            return cb(null);
+            console.error("Failed to read response text:", textErr.message);
+            handled = true;
+            return cb({ ok: false, reason: "read_text_failed" });
           }
         }
       } catch (err) {
-        console.error("Error handling finished request:", err && err.message ? err.message : err);
-        return cb(null);
+        console.error("Error in requestfinished handler:", err.message);
+        handled = true;
+        return cb({ ok: false, reason: "handler_error", message: err.message });
       }
     });
 
-    // Mock real desktop chrome
+    // Mock desktop Chrome
     await page.setViewport({ height: 1302, width: 2458 });
     await page.setUserAgent(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
@@ -75,36 +88,41 @@ const scrapeJsonFromResponse = async (options, cb) => {
       Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
     });
 
-    await page.goto(options.url, { waitUntil: "networkidle0" });
+    await page.goto(options.url, { waitUntil: "networkidle0", timeout: 30000 }).catch((e) => {
+      console.warn("page.goto warning:", e.message);
+    });
 
-    // Additional robust DOM-scraping fallback: try to extract table rows if JSON wasn't produced
-    try {
-      // Example: attempt to extract a generic table of rows if page contains it
-      const tableData = await page.evaluate(() => {
-        const rows = Array.from(document.querySelectorAll("table tr"));
-        if (!rows.length) return null;
-        return rows.slice(1).map(r => {
-          const cols = Array.from(r.querySelectorAll("td")).map(c => c.innerText.trim());
-          return { cols };
+    // Fallback: extract table rows if no JSON found
+    if (!handled) {
+      try {
+        const tableData = await page.evaluate(() => {
+          const rows = Array.from(document.querySelectorAll("table tr"));
+          if (!rows.length) return null;
+          return rows.slice(1).map((r) => {
+            const cols = Array.from(r.querySelectorAll("td")).map((c) => c.innerText.trim());
+            return { cols };
+          });
         });
-      });
-      if (tableData) {
-        // If we got table rows, return them as a fallback structure
-        cb({ table: tableData });
+        if (tableData && tableData.length) {
+          handled = true;
+          return cb({ ok: true, source: "dom_table", data: tableData });
+        }
+      } catch (domErr) {
+        console.warn("DOM extraction failed:", domErr.message);
       }
-    } catch (domErr) {
-      // swallow DOM extraction errors (we already attempted network-based extraction earlier)
-      console.warn("DOM extraction attempt failed:", domErr && domErr.message ? domErr.message : domErr);
     }
 
+    if (!handled) {
+      return cb({ ok: false, reason: "no_data_extracted" });
+    }
   } catch (outerErr) {
-    console.error("Puppeteer wrapper failure:", outerErr && outerErr.message ? outerErr.message : outerErr);
-    cb(null);
+    console.error("Puppeteer wrapper failure:", outerErr.message);
+    return cb({ ok: false, reason: "puppeteer_wrapper_failure", message: outerErr.message });
   } finally {
     try {
       await browser.close();
     } catch (closeErr) {
-      console.warn("Failed to close browser:", closeErr && closeErr.message ? closeErr.message : closeErr);
+      console.warn("Failed to close browser:", closeErr.message);
     }
   }
 };
