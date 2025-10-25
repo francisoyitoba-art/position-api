@@ -102,7 +102,14 @@ class Server {
         await areaApi.fetchVesselsInArea(
           req.params.area.split(","),
           (result) => {
-            res.json(result);
+            try {
+              if (!result || (Array.isArray(result) && result.length === 0)) {
+                return res.status(204).send();
+              }
+              return res.json(result);
+            } catch (e) {
+              return res.status(502).json({ error: "upstream_error", data: [] });
+            }
           },
         );
       },
@@ -115,7 +122,14 @@ class Server {
           req.params.lng,
           req.params.distance,
           (result) => {
-            res.json(result);
+            try {
+              if (!result || (Array.isArray(result) && result.length === 0)) {
+                return res.status(204).send();
+              }
+              return res.json(result);
+            } catch (e) {
+              return res.status(502).json({ error: "upstream_error", data: [] });
+            }
           },
         );
       },

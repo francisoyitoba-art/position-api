@@ -93,35 +93,41 @@ function getVesselsInPort(shipPort, cb) {
     brotli: true,
   };
   request(options, function (error, response, html) {
-    if (
-      (!error && response.statusCode === 200) ||
-      (typeof response !== "undefined" && response.statusCode === 403)
-    ) {
-      return cb(
-        response.body.data.map((vessel) => ({
-          name: vessel.SHIPNAME,
-          id: vessel.SHIP_ID,
-          lat: Number(vessel.LAT),
-          lon: Number(vessel.LON),
-          timestamp: vessel.LAST_POS,
-          mmsi: vessel.MMSI,
-          imo: vessel.IMO,
-          callsign: vessel.CALLSIGN,
-          speed: Number(vessel.SPEED),
-          area: vessel.AREA_CODE,
-          type: vessel.TYPE_SUMMARY,
-          country: vessel.COUNTRY,
-          destination: vessel.DESTINATION,
-          port_current_id: vessel.PORT_ID,
-          port_current: vessel.CURRENT_PORT,
-          port_next_id: vessel.NEXT_PORT_ID,
-          port_next: vessel.NEXT_PORT_NAME,
-        })),
-      );
-    } else {
-      debug("error in getVesselsInPort");
-      cb({ error: "an unknown error occured" });
-      return false;
+    try {
+      const status = response?.statusCode;
+      const data = response?.body?.data;
+      if ((!error && status === 200) || status === 403) {
+        if (!Array.isArray(data) || data.length === 0) {
+          return cb([]);
+        }
+        return cb(
+          data.map((vessel) => ({
+            name: vessel.SHIPNAME,
+            id: vessel.SHIP_ID,
+            lat: Number(vessel.LAT),
+            lon: Number(vessel.LON),
+            timestamp: vessel.LAST_POS,
+            mmsi: vessel.MMSI,
+            imo: vessel.IMO,
+            callsign: vessel.CALLSIGN,
+            speed: Number(vessel.SPEED),
+            area: vessel.AREA_CODE,
+            type: vessel.TYPE_SUMMARY,
+            country: vessel.COUNTRY,
+            destination: vessel.DESTINATION,
+            port_current_id: vessel.PORT_ID,
+            port_current: vessel.CURRENT_PORT,
+            port_next_id: vessel.NEXT_PORT_ID,
+            port_next: vessel.NEXT_PORT_NAME,
+          }))
+        );
+      } else {
+        debug("error in getVesselsInPort", error);
+        return cb({ error: "upstream_error", status, message: error?.message });
+      }
+    } catch (e) {
+      debug("exception in getVesselsInPort", e?.message);
+      return cb({ error: "handler_error" });
     }
   });
 }

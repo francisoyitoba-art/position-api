@@ -17,7 +17,7 @@ class ADSBExchange extends Source {
 
   getLocation = async (icao: string) => {
     /// <reference lib="dom" />
-    const fetch = (await import("node-fetch")).default;
+    const fetch = (await import("node-fetch")).default as any;
     const response = await fetch(
       `https://globe.adsbexchange.com/data/traces/${icao.slice(
         -2,
@@ -92,7 +92,7 @@ class ADSBExchange extends Source {
 
   getLocationFull = async (icao: string) => {
     /// <reference lib="dom" />
-    const fetch = (await import("node-fetch")).default;
+    const fetch = (await import("node-fetch")).default as any;
     const response = await fetch(
       `https://globe.adsbexchange.com/data/traces/${icao.slice(
         -2,

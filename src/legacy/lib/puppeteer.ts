@@ -49,7 +49,7 @@ const scrapeJsonFromResponse = async (options, cb) => {
                 const parsed = JSON.parse(jsonMatch[0]);
                 handled = true;
                 return cb({ ok: true, source: "embedded_json", data: parsed });
-              } catch (parseErr) {
+              } catch (parseErr: any) {
                 console.error("Failed to parse embedded JSON:", parseErr.message);
               }
             }
@@ -64,13 +64,13 @@ const scrapeJsonFromResponse = async (options, cb) => {
               snippetLength: snippet.length,
               snippet,
             });
-          } catch (textErr) {
+          } catch (textErr: any) {
             console.error("Failed to read response text:", textErr.message);
             handled = true;
             return cb({ ok: false, reason: "read_text_failed" });
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error in requestfinished handler:", err.message);
         handled = true;
         return cb({ ok: false, reason: "handler_error", message: err.message });
@@ -88,7 +88,7 @@ const scrapeJsonFromResponse = async (options, cb) => {
       Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
     });
 
-    await page.goto(options.url, { waitUntil: "networkidle0", timeout: 30000 }).catch((e) => {
+    await page.goto(options.url, { waitUntil: "networkidle0", timeout: 30000 }).catch((e: any) => {
       console.warn("page.goto warning:", e.message);
     });
 
@@ -107,7 +107,7 @@ const scrapeJsonFromResponse = async (options, cb) => {
           handled = true;
           return cb({ ok: true, source: "dom_table", data: tableData });
         }
-      } catch (domErr) {
+      } catch (domErr: any) {
         console.warn("DOM extraction failed:", domErr.message);
       }
     }
@@ -115,13 +115,13 @@ const scrapeJsonFromResponse = async (options, cb) => {
     if (!handled) {
       return cb({ ok: false, reason: "no_data_extracted" });
     }
-  } catch (outerErr) {
+  } catch (outerErr: any) {
     console.error("Puppeteer wrapper failure:", outerErr.message);
     return cb({ ok: false, reason: "puppeteer_wrapper_failure", message: outerErr.message });
   } finally {
     try {
       await browser.close();
-    } catch (closeErr) {
+    } catch (closeErr: any) {
       console.warn("Failed to close browser:", closeErr.message);
     }
   }
